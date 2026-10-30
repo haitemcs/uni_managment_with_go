@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -59,7 +60,7 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func decodeJSON(r *http.Request, dst any) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 1<<20))
+	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	return decoder.Decode(dst)
 }
