@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"strings"
 )
 
 func (a *API) requireAuth(next http.Handler) http.Handler {
@@ -26,24 +25,16 @@ func (a *API) requireAuth(next http.Handler) http.Handler {
 func (a *API) requireRoles(roles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return a.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			claims, ok := r.Context().Value(claimsKey).(*ClaimsAlias)
-			_ = claims
-			_ = ok
-			// The authenticated claims are checked below without trusting request data.
-			value := r.Context().Value(claimsKey)
-			claimsValue, ok := value.(interface{ GetRole() string })
-			if ok {
-				for _, role := range roles {
-					if claimsValue.GetRole() == role {
-						next.ServeHTTP(w, r)
-						return
-					}
-				}
-			}
-			// Claims is a concrete type from the auth package; use the helper.
-			if hasRole(value, roles) {
-				next.ServeHTTP(w, r)
+			claims, ok := currentClaims(r.Context().Value(claimsKey))
+			if !ok {
+				writeError(w, http.StatusUnauthorized, "invalid authentication context")
 				return
+			}
+			for _, role := range roles {
+				if claims.Role == role {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			writeError(w, http.StatusForbidden, "insufficient role")
 		}))
@@ -52,8 +43,11 @@ func (a *API) requireRoles(roles ...string) func(http.Handler) http.Handler {
 
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", strings.TrimSpace(r.Header.Get("Origin")))
-		w.Header().Set("Vary", "Origin")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {
