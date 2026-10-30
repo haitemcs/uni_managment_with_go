@@ -17,16 +17,29 @@ LEFT JOIN enrollments e ON e.course_id = c.id
 GROUP BY c.id, c.code, c.title;
 
 CREATE OR REPLACE VIEW department_performance AS
+WITH student_counts AS (
+    SELECT department_id, COUNT(*) AS student_count
+    FROM students GROUP BY department_id
+),
+course_counts AS (
+    SELECT department_id, COUNT(*) AS course_count
+    FROM courses GROUP BY department_id
+),
+grade_stats AS (
+    SELECT c.department_id, ROUND(AVG(g.score), 2) AS average_grade
+    FROM courses c
+    JOIN enrollments e ON e.course_id = c.id
+    JOIN grades g ON g.enrollment_id = e.id
+    GROUP BY c.department_id
+)
 SELECT d.id AS department_id, d.name AS department_name,
-       COUNT(DISTINCT s.id) AS student_count,
-       COUNT(DISTINCT c.id) AS course_count,
-       ROUND(AVG(g.score), 2) AS average_grade
+       COALESCE(sc.student_count, 0) AS student_count,
+       COALESCE(cc.course_count, 0) AS course_count,
+       gs.average_grade
 FROM departments d
-LEFT JOIN students s ON s.department_id = d.id
-LEFT JOIN courses c ON c.department_id = d.id
-LEFT JOIN enrollments e ON e.student_id = s.id AND e.course_id = c.id
-LEFT JOIN grades g ON g.enrollment_id = e.id
-GROUP BY d.id, d.name;
+LEFT JOIN student_counts sc ON sc.department_id = d.id
+LEFT JOIN course_counts cc ON cc.department_id = d.id
+LEFT JOIN grade_stats gs ON gs.department_id = d.id;
 
 CREATE OR REPLACE FUNCTION student_average(p_student_id BIGINT)
 RETURNS NUMERIC(5,2)
